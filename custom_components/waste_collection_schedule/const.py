@@ -43,6 +43,7 @@ CONF_DAY_SWITCH_TIME_DEFAULT: Final = "10:00"
 # Sensor config var names
 
 CONF_SOURCE_INDEX: Final = "source_index"
+CONF_SENSOR_TYPE: Final = "sensor_type"
 CONF_DETAILS_FORMAT: Final = "details_format"
 CONF_COUNT: Final = "count"
 CONF_LEADTIME: Final = "leadtime"

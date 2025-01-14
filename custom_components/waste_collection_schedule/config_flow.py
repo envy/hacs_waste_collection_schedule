@@ -65,6 +65,7 @@ from .const import (
     CONF_RANDOM_FETCH_TIME_OFFSET,
     CONF_RANDOM_FETCH_TIME_OFFSET_DEFAULT,
     CONF_SENSORS,
+    CONF_SENSOR_TYPE,
     CONF_SEPARATOR,
     CONF_SEPARATOR_DEFAULT,
     CONF_SHOW,
@@ -78,7 +79,7 @@ from .const import (
     DOMAIN,
 )
 from .init_ui import WCSCoordinator
-from .sensor import DetailsFormat
+from .sensor import DetailsFormat, SensorType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -132,6 +133,21 @@ def get_sensor_schema(fetched_types, add_delete=False, defaults: dict = {}):
 
     schema.update(
         {
+            vol.Optional(
+                CONF_SENSOR_TYPE,
+                default=defaults.get(CONF_SENSOR_TYPE, "schedule"),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(
+                            label=k,
+                            value=k,
+                        )
+                        for k in SensorType.__members__.keys()
+                    ],
+                    translation_key="sensor_type",
+                )
+            ),
             vol.Optional(
                 CONF_DETAILS_FORMAT,
                 default=defaults.get(CONF_DETAILS_FORMAT, "upcoming"),
@@ -788,9 +804,9 @@ class WasteCollectionConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call
             if user_input.get(CONF_DEDICATED_CALENDAR_TITLE, "") and not user_input.get(
                 CONF_USE_DEDICATED_CALENDAR, False
             ):
-                errors[
-                    CONF_DEDICATED_CALENDAR_TITLE
-                ] = "dedicated_calendar_title_without_use_dedicated_calendar"
+                errors[CONF_DEDICATED_CALENDAR_TITLE] = (
+                    "dedicated_calendar_title_without_use_dedicated_calendar"
+                )
             else:
                 if CONF_ALIAS in user_input:
                     self._fetched_types.remove(types[self._customize_index])

@@ -78,6 +78,7 @@
         "description": "Configure one sensor at a time.",
         "data": {
           "name": "Name of the Sensor",
+          "sensor_type": "Type of the sensor",
           "details_format": "Details Format",
           "count": "Count",
           "leadtime": "Leadtime",
@@ -90,6 +91,7 @@
           "additional": "Add additional sensors"
         },
         "data_description": {
+          "sensor_type": "Specifies the sensor type. 'schedule' for the standard sensor. 'date' for a sensor that only has the next collection date as its state.",
           "details_format": "Specifies the format used to display info in Home Assistant's more info pop-up. 'upcoming': shows a list of upcoming collections, 'appointment_types': shows a list of waste types and their next collection date, 'generic': provides all attributes as generic Python data types, 'hidden': hide attributes of upcoming collections",
           "count": "Limits Home Assistant's more info popup to displaying the next int collections",
           "leadtime": "Limits Home Assistant's more info popup to only displaying collections happening within the next leadtime days",
@@ -18126,6 +18128,7 @@
         "data": {
           "delete": "Delete",
           "name": "Name of the Sensor",
+          "sensor_type": "Sensor type",
           "details_format": "Details Format",
           "count": "Count",
           "leadtime": "Leadtime",
@@ -18139,6 +18142,7 @@
         },
         "data_description": {
           "delete": "Delete this customization.",
+          "sensor_type": "Specifies the sensor type. 'schedule' for the standard sensor. 'date' for a sensor that only has the next collection date as its state.",
           "details_format": "Specifies the format used to display info in Home Assistant's more info pop-up. 'upcoming': shows a list of upcoming collections, 'appointment_types': shows a list of waste types and their next collection date, 'generic': provides all attributes as generic Python data types, 'hidden': hide attributes of upcoming collections",
           "count": "Limits Home Assistant's more info popup to displaying the next int collections",
           "leadtime": "Limits Home Assistant's more info popup to only displaying collections happening within the next leadtime days",

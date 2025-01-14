@@ -7,7 +7,11 @@ from typing import Any
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
+from homeassistant.components.sensor import (
+    PLATFORM_SCHEMA,
+    SensorEntity,
+    SensorDeviceClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME, CONF_VALUE_TEMPLATE
 from homeassistant.core import HomeAssistant, callback
@@ -28,6 +32,7 @@ from .const import (
     CONF_EVENT_INDEX,
     CONF_LEADTIME,
     CONF_SENSORS,
+    CONF_SENSOR_TYPE,
     CONF_SOURCE_INDEX,
     DOMAIN,
     UPDATE_SENSORS_SIGNAL,
@@ -51,9 +56,17 @@ class DetailsFormat(Enum):
     hidden = "hidden"  # hide details
 
 
+class SensorType(Enum):
+    """Values for CONF_SENSOR_TYPE"""
+
+    schedule = "schedule"
+    date = "date"
+
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_NAME): cv.string,
+        vol.Optional(CONF_SENSOR_TYPE): cv.enum(SensorType),
         vol.Optional(CONF_SOURCE_INDEX, default=0): vol.Any(
             cv.positive_int, vol.All(cv.ensure_list, [cv.positive_int])
         ),  # can be a scalar or a list
@@ -79,41 +92,62 @@ async def async_setup_entry(hass, config: ConfigEntry, async_add_entities):
     entities = []
     for sensor in config.options.get(CONF_SENSORS, []):
         _LOGGER.debug("Adding sensor %s", sensor)
-        value_template = sensor.get(CONF_VALUE_TEMPLATE)
-        date_template = sensor.get(CONF_DATE_TEMPLATE)
-        try:
-            value_template = cv.template(value_template)
-        except (
-            vol.Invalid
-        ):  # should only happen if value_template = None, as it is already validated in the config flow if it is not None
-            value_template = None
-        try:
-            date_template = cv.template(date_template)
-        except (
-            vol.Invalid
-        ):  # should only happen if value_template = None, as it is already validated in the config flow if it is not None
-            date_template = None
-        details_format = sensor.get(CONF_DETAILS_FORMAT)
-        if isinstance(details_format, str):
-            details_format = DetailsFormat(details_format)
+        sensor_type = sensor.get(CONF_SENSOR_TYPE)
+        if isinstance(sensor_type, str):
+            sensor_type = SensorType(sensor_type)
 
-        entities.append(
-            ScheduleSensor(
-                hass=hass,
-                api=None,
-                coordinator=coordinator,
-                name=sensor.get(CONF_NAME, coordinator.shell.calendar_title),
-                aggregator=aggregator,
-                details_format=details_format,
-                count=sensor.get(CONF_COUNT),
-                leadtime=sensor.get(CONF_LEADTIME),
-                collection_types=sensor.get(CONF_COLLECTION_TYPES),
-                value_template=value_template,
-                date_template=date_template,
-                add_days_to=sensor.get(CONF_ADD_DAYS_TO, False),
-                event_index=sensor.get(CONF_EVENT_INDEX),
+        if sensor_type is None or sensor_type == SensorType.schedule:
+            value_template = sensor.get(CONF_VALUE_TEMPLATE)
+            date_template = sensor.get(CONF_DATE_TEMPLATE)
+            try:
+                value_template = cv.template(value_template)
+            except (
+                vol.Invalid
+            ):  # should only happen if value_template = None, as it is already validated in the config flow if it is not None
+                value_template = None
+            try:
+                date_template = cv.template(date_template)
+            except (
+                vol.Invalid
+            ):  # should only happen if value_template = None, as it is already validated in the config flow if it is not None
+                date_template = None
+            details_format = sensor.get(CONF_DETAILS_FORMAT)
+            if isinstance(details_format, str):
+                details_format = DetailsFormat(details_format)
+
+            entities.append(
+                ScheduleSensor(
+                    hass=hass,
+                    api=None,
+                    coordinator=coordinator,
+                    name=sensor.get(CONF_NAME, coordinator.shell.calendar_title),
+                    aggregator=aggregator,
+                    details_format=details_format,
+                    count=sensor.get(CONF_COUNT),
+                    leadtime=sensor.get(CONF_LEADTIME),
+                    collection_types=sensor.get(CONF_COLLECTION_TYPES),
+                    value_template=value_template,
+                    date_template=date_template,
+                    add_days_to=sensor.get(CONF_ADD_DAYS_TO, False),
+                    event_index=sensor.get(CONF_EVENT_INDEX),
+                )
             )
-        )
+        elif sensor_type == SensorType.date:
+            collection_type: str = None
+            collection_types = sensor.get(CONF_COLLECTION_TYPES)
+            if isinstance(collection_types, list):
+                collection_type = collection_types[0]
+
+            entities.append(
+                DateSensor(
+                    hass=hass,
+                    api=None,
+                    coordinator=coordinator,
+                    name=sensor.get(CONF_NAME),
+                    aggregator=aggregator,
+                    collection_type=collection_type,
+                )
+            )
 
     async_add_entities(entities, update_before_add=True)
 
@@ -362,6 +396,88 @@ class ScheduleSensor(SensorEntity):
 
         self._attr_extra_state_attributes = attributes
         self._add_refreshtime()
+
+        if self.hass is not None:
+            self.async_write_ha_state()
+
+
+class DateSensor(SensorEntity):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api: WasteCollectionApi | None,
+        coordinator: WCSCoordinator | None,
+        name: str,
+        aggregator: CollectionAggregator,
+        collection_type: str,
+    ):
+        """Initialize the entity."""
+        self._api = api
+        self._coordinator = coordinator
+        self._aggregator = aggregator
+        self._collection_type = collection_type
+
+        self._value: datetime.date = None
+
+        # entity attributes
+        self._attr_name = name
+        self._attr_icon = "mdi:trash-can"
+        self._attr_entity_picture = None
+        self._attr_device_class = SensorDeviceClass.DATE
+
+        if self._coordinator:
+            shell = self._coordinator.shell
+            self._attr_unique_id = f"{shell.unique_id}_ui_date_sensor_{name}"
+            self._attr_device_info = self._coordinator.device_info
+        else:
+            self._attr_unique_id = name
+        self._attr_should_poll = False
+
+        async_dispatcher_connect(hass, UPDATE_SENSORS_SIGNAL, self._update_sensor)
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+
+        if self._coordinator:
+            self.async_on_remove(
+                self._coordinator.async_add_listener(self._update_sensor, None)
+            )
+
+        self._update_sensor()
+
+    @property
+    def native_value(self):
+        """Return the state of the entity."""
+        return self._value
+
+    @callback
+    def _update_sensor(self):
+        """
+        Update the state and the device-state-attributes of the entity.
+
+        Called if a new data has been fetched from the source.
+        """
+        if self._aggregator is None:
+            return None
+
+        upcoming = self._aggregator.get_upcoming_group_by_day(
+            count=1,
+            include_types=[self._collection_type],
+            include_today=True,
+            start_index=0,
+        )
+
+        self._value = None if len(upcoming) == 0 else upcoming[0].date
+
+        attributes = {}
+
+        refreshtime: datetime.datetime = None
+        if self._aggregator.refreshtime is not None:
+            refreshtime = self._aggregator.refreshtime
+        attributes["last_update"] = refreshtime
+
+        self._attr_extra_state_attributes = attributes
 
         if self.hass is not None:
             self.async_write_ha_state()
